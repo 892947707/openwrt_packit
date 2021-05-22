@@ -7,7 +7,7 @@ fi
 
 # Image sources
 ######################################################################
-source make.env
+source /opt/kernel/make.env
 SOC="rk3328"
 BOARD="l1pro"
 SUBVER=$1
