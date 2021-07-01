@@ -75,6 +75,7 @@ MAC_SCRIPT3="${PWD}/files/inc_macaddr.pl"
 CPUSTAT_SCRIPT="${PWD}/files/cpustat"
 CPUSTAT_SCRIPT_PY="${PWD}/files/cpustat.py"
 CPUSTAT_PATCH="${PWD}/files/luci-admin-status-index-html.patch"
+CPUSTAT_PATCH_02="${PWD}/files/luci-admin-status-index-html-02.patch"
 GETCPU_SCRIPT="${PWD}/files/getcpu"
 TTYD="${PWD}/files/ttyd"
 FLIPPY="${PWD}/files/flippy"
@@ -130,6 +131,9 @@ DOCKERD_PATCH="${PWD}/files/dockerd.patch"
 FIRMWARE_TXZ="${PWD}/files/firmware_armbian.tar.xz"
 BOOTFILES_HOME="${PWD}/files/bootfiles/amlogic"
 GET_RANDOM_MAC="${PWD}/files/get_random_mac.sh"
+
+# 20210618 add
+DOCKER_README="${PWD}/files/DockerReadme.pdf"
 ###########################################################################
 
 # 检查环境
@@ -362,7 +366,7 @@ if [ -x usr/bin/perl ];then
 else
 	[ -f $CPUSTAT_SCRIPT_PY ] && cp $CPUSTAT_SCRIPT_PY usr/bin/cpustat && chmod 755 usr/bin/cpustat
 fi
-[ -f $TTYD ] && cp $TTYD etc/init.d/
+#[ -f $TTYD ] && cp $TTYD etc/init.d/
 [ -f $FLIPPY ] && cp $FLIPPY usr/sbin/
 if [ -f $BANNER ];then
     cp -f $BANNER etc/banner
@@ -386,6 +390,9 @@ fi
 if [ -f $FIX_CPU_FREQ ];then
     cp -v $FIX_CPU_FREQ usr/sbin
     chmod 755 usr/sbin/fixcpufreq.pl
+fi
+if [ -f etc/config/cpufreq ];then
+    sed -e "s/ondemand/schedutil/" -i etc/config/cpufreq
 fi
 if [ -f $SYSFIXTIME_PATCH ];then
     patch -p1 < $SYSFIXTIME_PATCH
@@ -498,7 +505,8 @@ cat ./etc/config/fstab
 
 [ -f ./etc/docker-init ] && rm -f ./etc/docker-init
 [ -f ./sbin/firstboot ] && rm -f ./sbin/firstboot
-[ -f ./sbin/jffs2reset ] && rm -f ./sbin/jffs2reset
+[ -f ./sbin/jffs2reset ] && rm -f ./sbin/jffs2reset ./sbin/jffs2mark
+[ -f ./www/DockerReadme.pdf ] && [ -f ${DOCKER_README} ] && cp -fv ${DOCKER_README} ./www/DockerReadme.pdf
 
 mkdir -p ./etc/modprobe.d
 cat > ./etc/modprobe.d/99-local.conf <<EOF
@@ -519,10 +527,17 @@ for mod in $mod_blacklist ;do
 	mv -f ./etc/modules.d/${mod} ./etc/modules.d.remove/ 2>/dev/null
 done
 
-# 在高版本内核下， wifi模块目前问题太多，禁用
-#if [ $K510 -eq 1 ];then
-    mv -f ./etc/modules.d/brcm*  ./etc/modules.d.remove/ 2>/dev/null
-#fi
+if [ $K510 -eq 1 ];then
+    # 高版本内核下，如果ENABLE_WIFI_K510 = 0 则禁用wifi
+    if [ $ENABLE_WIFI_K510 -eq 0 ];then
+        mv -f ./etc/modules.d/brcm*  ./etc/modules.d.remove/ 2>/dev/null
+    fi
+else
+    # 低版本内核下，如果ENABLE_WIFI_K504 = 0 则禁用wifi
+    if [ $ENABLE_WIFI_K504 -eq 0 ];then
+        mv -f ./etc/modules.d/brcm*  ./etc/modules.d.remove/ 2>/dev/null
+    fi
+fi
 
 # 默认禁用sfe
 [ -f ./etc/config/sfe ] && sed -e 's/option enabled '1'/option enabled '0'/' -i ./etc/config/sfe
@@ -530,8 +545,7 @@ done
 [ -f ./etc/modules.d/usb-net-asix-ax88179 ] || echo "ax88179_178a" > ./etc/modules.d/usb-net-asix-ax88179
 # +版内核，优先启用v2驱动, +o内核则启用v1驱动
 if echo $KERNEL_VERSION | grep -E '*\+$' ;then
-	#echo "r8152_v2" > ./etc/modules.d/usb-net-rtl8152
-	echo "r8152_v2" > ./etc/modules.d/usb-net-rtl8152
+	echo "r8152" > ./etc/modules.d/usb-net-rtl8152
 else
 	echo "r8152" > ./etc/modules.d/usb-net-rtl8152
 fi
@@ -571,7 +585,11 @@ ln -sf kmod lsmod
 ln -sf kmod modinfo
 ln -sf kmod modprobe
 ln -sf kmod rmmod
-ln -sf /usr/bin/ntfs-3g mount.ntfs
+if [ -f mount.ntfs3 ];then
+    ln -sf mount.ntfs3 mount.ntfs
+elif [ -f ../usr/bin/ntfs-3g ];then
+    ln -sf /usr/bin/ntfs-3g mount.ntfs
+fi
 
 cd $TGT_ROOT/lib/firmware
 mv *.hcd brcm/ 2>/dev/null
@@ -599,9 +617,8 @@ cat >> ${TGT_ROOT}/etc/crontabs/root << EOF
 37 5 * * * /etc/coremark.sh
 EOF
 
-[ -f $CPUSTAT_PATCH ] && \
-cd $TGT_ROOT/usr/lib/lua/luci/view/admin_status && \
-patch -p0 < ${CPUSTAT_PATCH}
+[ -f $CPUSTAT_PATCH ] && cd $TGT_ROOT && patch -p1 < ${CPUSTAT_PATCH}
+[ -x "${TGT_ROOT}/usr/bin/perl" ] && [ -f "${CPUSTAT_PATCH_02}" ] && cd ${TGT_ROOT} && patch -p1 < ${CPUSTAT_PATCH_02}
 
 # 创建 /etc 初始快照
 echo "创建初始快照: /etc -> /.snapshots/etc-000"
