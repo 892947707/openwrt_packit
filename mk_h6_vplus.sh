@@ -1,5 +1,6 @@
 #!/bin/bash
 
+echo "========================= begin $0 ================="
 WORK_DIR="${PWD}/tmp"
 if [ ! -d ${WORK_DIR} ];then
 	mkdir -p ${WORK_DIR}
@@ -108,6 +109,10 @@ BOOTFILES_HOME="${PWD}/files/bootfiles/allwinner"
 
 # 20210618 add
 DOCKER_README="${PWD}/files/DockerReadme.pdf"
+
+# 20210704 add
+SYSINFO_SCRIPT="${PWD}/files/30-sysinfo.sh"
+FORCE_REBOOT="${PWD}/files/vplus/reboot"
 ####################################################################
 
 # work dir
@@ -228,12 +233,12 @@ echo
 echo "modify root ... "
 # modify root
 cd $TGT_ROOT
-( [ -f "$SS_LIB" ] &&  cd lib && tar xvJf "$SS_LIB" )
+( [ -f "$SS_LIB" ] &&  cd lib && tar xJf "$SS_LIB" )
 if [ -f "$SS_BIN" ];then
     (
         cd usr/bin
         mkdir -p ss-bin-musl && mv -f ss-server ss-redir ss-local ss-tunnel ss-bin-musl/ 2>/dev/null
-       	tar xvJf "$SS_BIN"
+       	tar xJf "$SS_BIN"
     )
 fi
 if [ -f "$JQ" ] && [ ! -f "./usr/bin/jq" ];then
@@ -304,6 +309,7 @@ if [ -f usr/bin/xray-plugin ] && [ -f usr/bin/v2ray-plugin ];then
 fi
 
 [ -d ${FMW_HOME} ] && cp -a ${FMW_HOME}/* lib/firmware/
+[ -f $FORCE_REBOOT ] && cp $FORCE_REBOOT usr/sbin/
 [ -f ${SYSCTL_CUSTOM_CONF} ] && cp ${SYSCTL_CUSTOM_CONF} etc/sysctl.d/
 [ -d overlay ] || mkdir -p overlay
 [ -d rom ] || mkdir -p rom
@@ -335,6 +341,8 @@ sed -e 's/\/opt/\/etc/' -i ./etc/config/qbittorrent
 sed -e "s/#PermitRootLogin prohibit-password/PermitRootLogin yes/" -i ./etc/ssh/sshd_config 2>/dev/null
 sss=$(date +%s)
 ddd=$((sss/86400))
+[ -x ./bin/bash ] && [ -f "${SYSINFO_SCRIPT}" ] && cp -v "${SYSINFO_SCRIPT}" ./etc/profile.d/ && sed -e "s/\/bin\/ash/\/bin\/bash/" -i ./etc/passwd && \
+	sed -e "s/\/bin\/ash/\/bin\/bash/" -i ./usr/libexec/login.sh
 sed -e "s/:0:0:99999:7:::/:${ddd}:0:99999:7:::/" -i ./etc/shadow
 sed -e 's/root::/root:$1$NA6OM0Li$99nh752vw4oe7A.gkm2xk1:/' -i ./etc/shadow
 
@@ -353,13 +361,34 @@ sed -e 's/root::/root:$1$NA6OM0Li$99nh752vw4oe7A.gkm2xk1:/' -i ./etc/shadow
 	patch -p1 < ${SMB4_PATCH}
 # for nfs server
 if [ -f ./etc/init.d/nfsd ];then
-    echo "/mnt/mmcblk0p4 *(rw,sync,no_root_squash,insecure,no_subtree_check)" > ./etc/exports
+    cat > ./etc/exports <<EOF
+# /etc/exports: the access control list for filesystems which may be exported
+#               to NFS clients.  See exports(5).
+#
+# Example for NFSv2 and NFSv3:
+# /srv/homes       hostname1(rw,sync,no_subtree_check) hostname2(ro,sync,no_subtree_check)
+#
+# Example for NFSv4:
+# /srv/nfs4        gss/krb5i(rw,sync,fsid=0,crossmnt,no_subtree_check)
+# /srv/nfs4/homes  gss/krb5i(rw,sync,no_subtree_check)
+#
+
+/mnt *(ro,fsid=0,sync,nohide,no_subtree_check,insecure,no_root_squash)
+/mnt/mmcblk0p4 *(rw,fsid=1,sync,no_subtree_check,no_root_squash)
+EOF
     cat > ./etc/config/nfs <<EOF
+
 config share
-	option clients '*'
-	option enabled '1'
-	option options 'rw,sync,no_root_squash,insecure,no_subtree_check'
-	option path '/mnt/mmcblk0p4'
+        option clients '*'
+        option enabled '1'
+        option path '/mnt'
+        option options 'ro,fsid=0,sync,nohide,no_subtree_check,insecure,no_root_squash'
+
+config share
+        option enabled '1'
+        option path '/mnt/mmcblk0p4'
+        option clients '*'
+        option options 'rw,fsid=1,sync,no_subtree_check,no_root_squash'
 EOF
 fi
 
@@ -489,3 +518,5 @@ umount -f $TGT_ROOT $TGT_BOOT
 ( losetup -D && cd $WORK_DIR && rm -rf $TEMP_DIR && losetup -D)
 sync
 echo "镜像已生成!"
+echo "========================== end $0 ================================"
+echo
