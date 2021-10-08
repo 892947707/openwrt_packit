@@ -74,7 +74,7 @@ CPUSTAT_PATCH="${PWD}/files/luci-admin-status-index-html.patch"
 CPUSTAT_PATCH_02="${PWD}/files/luci-admin-status-index-html-02.patch"
 GETCPU_SCRIPT="${PWD}/files/getcpu"
 TTYD="${PWD}/files/ttyd"
-FLIPPY="${PWD}/files/flippy"
+FLIPPY="${PWD}/files/scripts_deprecated/flippy_cn"
 BANNER="${PWD}/files/banner"
 
 # 20200314 add
@@ -86,8 +86,6 @@ SYSCTL_CUSTOM_CONF="${PWD}/files/99-custom.conf"
 COREMARK="${PWD}/files/coremark.sh"
 
 # 20200930 add
-INST_SCRIPT="${PWD}/files/s905x3/install-to-emmc.sh"
-UPDATE_SCRIPT="${PWD}/files/s905x3/update-to-emmc.sh"
 SND_MOD="${PWD}/files/s905x3/snd-meson-g12"
 BTLD_BIN="${PWD}/files/s905x3/hk1box-bootloader.img"
 DAEMON_JSON="${PWD}/files/s905x3/daemon.json"
@@ -134,6 +132,12 @@ DOCKER_README="${PWD}/files/DockerReadme.pdf"
 
 # 20210704 add
 SYSINFO_SCRIPT="${PWD}/files/30-sysinfo.sh"
+
+# 20210923 add
+OPENWRT_INSTALL="${PWD}/files/openwrt-install-amlogic"
+OPENWRT_UPDATE="${PWD}/files/openwrt-update-amlogic"
+OPENWRT_KERNEL="${PWD}/files/openwrt-kernel"
+OPENWRT_BACKUP="${PWD}/files/openwrt-backup"
 ###########################################################################
 
 # 检查环境
@@ -391,8 +395,10 @@ if [ -d "${FIP_HOME}" ];then
        cp -v "${FIP_HOME}"/*.sd.bin lib/u-boot/ 
 fi
 
-[ -f $INST_SCRIPT ] && cp $INST_SCRIPT root/
-# [ -f $UPDATE_SCRIPT ] && cp $UPDATE_SCRIPT root/
+[ -f $OPENWRT_INSTALL ] && cp $OPENWRT_INSTALL usr/sbin/ && ln -s ../usr/sbin/openwrt-install-amlogic root/install-to-emmc.sh
+[ -f $OPENWRT_UPDATE ] && cp $OPENWRT_UPDATE usr/sbin/
+[ -f ${OPENWRT_KERNEL} ] && cp ${OPENWRT_KERNEL} usr/sbin/
+[ -f ${OPENWRT_BACKUP} ] && cp ${OPENWRT_BACKUP} usr/sbin/ && (cd usr/sbin && ln -sf openwrt-backup flippy)
 [ -f $MAC_SCRIPT1 ] && cp $MAC_SCRIPT1 usr/bin/
 [ -f $MAC_SCRIPT2 ] && cp $MAC_SCRIPT2 usr/bin/
 [ -f $MAC_SCRIPT3 ] && cp $MAC_SCRIPT3 usr/bin/
@@ -680,7 +686,7 @@ fi
 cd brcm
 source ${GET_RANDOM_MAC}
 
-# gtking/gtking pro 采用 bcm4356 wifi/bluetooth 模块
+# gtking/gtking pro wifi5版本 采用 bcm4356 wifi/bluetooth 模块
 get_random_mac
 sed -e "s/macaddr=00:90:4c:1a:10:01/macaddr=${MACADDR}/" "brcmfmac4356-sdio.txt" > "brcmfmac4356-sdio.azw,gtking.txt"
 
@@ -693,6 +699,14 @@ get_random_mac
 sed -e "s/macaddr=00:90:4c:c5:12:38/macaddr=${MACADDR}/" "brcmfmac4339-sdio.ZP.txt" > "brcmfmac4339-sdio.amlogic,sm1.txt"
 get_random_mac
 sed -e "s/macaddr=b8:27:eb:74:f2:6c/macaddr=${MACADDR}/" "brcmfmac43455-sdio.txt" > "brcmfmac43455-sdio.amlogic,sm1.txt"
+
+# 旧版ugoos x3 采用 bcm43455 wifi/bluetooth 模块
+get_random_mac
+sed -e "s/macaddr=b8:27:eb:74:f2:6c/macaddr=${MACADDR}/" "brcmfmac43455-sdio.txt" > "brcmfmac43455-sdio.amlogic,sm1.txt"
+
+# 新版ugoos x3 采用 brm43456
+get_random_mac
+sed -e "s/macaddr=b8:27:eb:74:f2:6c/macaddr=${MACADDR}/" "brcmfmac43456-sdio.txt" > "brcmfmac43456-sdio.amlogic,sm1.txt"
 
 rm -f ${TGT_ROOT}/etc/bench.log
 cat >> ${TGT_ROOT}/etc/crontabs/root << EOF
